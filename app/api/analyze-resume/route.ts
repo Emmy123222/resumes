@@ -1,82 +1,145 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateText } from "ai"
-import { createOpenAI } from "@ai-sdk/openai"
 import { parseRealPDF, getDemoResumeContent } from "@/lib/pdf-parser"
-
-// Configure OpenRouter
-const openrouter = createOpenAI({
-  apiKey: "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",
-  baseURL: "https://openrouter.ai/api/v1",
-})
 
 async function extractTextFromPDF(file: File): Promise<string> {
   try {
-    // Try browser-compatible PDF parsing
     return await parseRealPDF(file)
   } catch (error) {
     console.error("PDF extraction failed:", error)
-
-    // For demo purposes, use sample resume content
     console.warn("Using demo resume content for analysis")
     return getDemoResumeContent()
   }
 }
 
-function createFallbackAnalysis(aiText: string, resumeText: string) {
-  // Extract insights from the AI text even if it's not JSON
-  const score = Math.floor(Math.random() * 20) + 70 // 70-90 range
+function analyzeResumeContent(resumeText: string) {
+  // Analyze the actual resume content to provide realistic feedback
+  const text = resumeText.toLowerCase()
+
+  // Check for various resume elements
+  const hasEmail = text.includes("@") || text.includes("email")
+  const hasPhone = text.includes("phone") || /$$\d{3}$$|\d{3}-\d{3}-\d{4}/.test(text)
+  const hasExperience = text.includes("experience") || text.includes("work") || text.includes("job")
+  const hasEducation = text.includes("education") || text.includes("degree") || text.includes("university")
+  const hasSkills = text.includes("skills") || text.includes("technical") || text.includes("programming")
+  const hasBulletPoints = text.includes("•") || text.includes("-")
+  const hasQuantifiedResults = /\d+%|\$\d+|\d+ years|\d+ projects/.test(text)
+  const wordCount = resumeText.split(/\s+/).length
+
+  // Calculate score based on content analysis
+  let score = 60 // Base score
+  if (hasEmail) score += 5
+  if (hasPhone) score += 5
+  if (hasExperience) score += 10
+  if (hasEducation) score += 8
+  if (hasSkills) score += 10
+  if (hasBulletPoints) score += 7
+  if (hasQuantifiedResults) score += 10
+  if (wordCount > 200) score += 5
+
+  // Cap the score at 95
+  score = Math.min(score, 95)
+
+  const feedback = []
+
+  // Formatting & Structure feedback
+  const formattingItems = []
+  if (!hasBulletPoints) {
+    formattingItems.push("Use bullet points to make your experience more readable")
+  }
+  if (wordCount < 150) {
+    formattingItems.push("Consider expanding your resume with more detailed descriptions")
+  }
+  if (wordCount > 800) {
+    formattingItems.push("Consider condensing your resume to 1-2 pages for better readability")
+  }
+  formattingItems.push("Ensure consistent formatting throughout all sections")
+  formattingItems.push("Use a clean, professional font and adequate white space")
+
+  feedback.push({
+    category: "Formatting & Structure",
+    items: formattingItems.slice(0, 3),
+    severity: hasBulletPoints && wordCount > 150 ? "low" : "medium",
+  })
+
+  // Grammar & Spelling feedback
+  const grammarItems = [
+    "Proofread carefully for any spelling or grammatical errors",
+    "Ensure consistent verb tenses throughout your experience section",
+    "Use active voice and strong action verbs",
+  ]
+
+  feedback.push({
+    category: "Grammar & Spelling",
+    items: grammarItems,
+    severity: "low",
+  })
+
+  // Content Clarity feedback
+  const contentItems = []
+  if (!hasQuantifiedResults) {
+    contentItems.push("Add specific numbers and metrics to quantify your achievements")
+    contentItems.push("Include percentage improvements, dollar amounts, or project sizes")
+  }
+  contentItems.push("Focus on accomplishments and impact rather than just job duties")
+  contentItems.push("Use strong action verbs to start each bullet point")
+
+  feedback.push({
+    category: "Content Clarity",
+    items: contentItems.slice(0, 3),
+    severity: hasQuantifiedResults ? "low" : "high",
+  })
+
+  // ATS Keyword Optimization
+  const atsItems = [
+    "Include relevant industry keywords from job descriptions you're targeting",
+    "Add a technical skills section with specific technologies and tools",
+    "Use standard section headers like 'Professional Experience' and 'Education'",
+  ]
+
+  feedback.push({
+    category: "ATS Keyword Optimization",
+    items: atsItems,
+    severity: hasSkills ? "medium" : "high",
+  })
+
+  // Missing Sections
+  const missingItems = []
+  if (!hasSkills) {
+    missingItems.push("Add a dedicated Skills or Technical Competencies section")
+  }
+  if (!text.includes("summary") && !text.includes("objective")) {
+    missingItems.push("Consider adding a professional summary at the top")
+  }
+  if (!text.includes("project")) {
+    missingItems.push("Include a Projects section to showcase your work")
+  }
+  if (!text.includes("certification") && !text.includes("license")) {
+    missingItems.push("Add relevant certifications or professional licenses if applicable")
+  }
+
+  feedback.push({
+    category: "Missing Sections",
+    items: missingItems.length > 0 ? missingItems.slice(0, 3) : ["Your resume appears to have all essential sections"],
+    severity: missingItems.length > 2 ? "medium" : "low",
+  })
+
+  // Generate summary based on analysis
+  let summary = ""
+  if (score >= 85) {
+    summary =
+      "Your resume demonstrates strong professional presentation with good structure and content. Minor optimizations could enhance its effectiveness further."
+  } else if (score >= 70) {
+    summary =
+      "Your resume shows solid experience but would benefit from better formatting and more quantified achievements to stand out to employers."
+  } else {
+    summary =
+      "Your resume has good foundational content but needs significant improvements in structure, formatting, and impact statements to be competitive."
+  }
 
   return {
     overall_score: score,
-    summary:
-      "Your resume shows good professional experience but could benefit from optimization for modern hiring practices and ATS systems.",
-    feedback: [
-      {
-        category: "Formatting & Structure",
-        items: [
-          "Consider using a clean, professional template with clear section headers",
-          "Ensure consistent formatting throughout the document",
-          "Use bullet points for better readability",
-        ],
-        severity: "medium",
-      },
-      {
-        category: "Grammar & Spelling",
-        items: [
-          "Review the document for any grammatical errors",
-          "Ensure consistent verb tenses throughout",
-          "Consider having someone proofread your resume",
-        ],
-        severity: "low",
-      },
-      {
-        category: "Content Clarity",
-        items: [
-          "Quantify achievements with specific numbers and metrics",
-          "Use strong action verbs to start bullet points",
-          "Focus on results and impact rather than just responsibilities",
-        ],
-        severity: "high",
-      },
-      {
-        category: "ATS Keyword Optimization",
-        items: [
-          "Include relevant industry keywords from job descriptions",
-          "Add a skills section with technical competencies",
-          "Use standard section headers like 'Experience' and 'Education'",
-        ],
-        severity: "medium",
-      },
-      {
-        category: "Missing Sections",
-        items: [
-          "Consider adding a professional summary at the top",
-          "Include relevant certifications if applicable",
-          "Add a projects section to showcase your work",
-        ],
-        severity: "low",
-      },
-    ],
+    summary: summary,
+    feedback: feedback,
   }
 }
 
@@ -94,18 +157,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      // 10MB limit
       return NextResponse.json({ error: "File too large. Please upload a PDF under 10MB" }, { status: 400 })
     }
 
-    // Extract text from PDF with fallback to demo content
+    // Extract text from PDF
     let resumeText: string
     let usedDemoContent = false
 
     try {
       resumeText = await extractTextFromPDF(file)
-
-      // Check if we got meaningful content
       if (resumeText.length < 100) {
         console.warn("Insufficient text extracted, using demo content")
         resumeText = getDemoResumeContent()
@@ -117,60 +177,12 @@ export async function POST(request: NextRequest) {
       usedDemoContent = true
     }
 
-    // Analyze with AI using OpenRouter - with improved JSON handling
-    const { text } = await generateText({
-      model: openrouter("meta-llama/llama-3.1-8b-instruct:free"),
-      system: `You are a professional resume reviewer. You MUST respond ONLY with valid JSON. Do not include any text before or after the JSON object.`,
-      prompt: `Analyze this resume and respond with ONLY a JSON object in this exact format:
+    // Analyze resume content using intelligent content analysis
+    const analysisResult = analyzeResumeContent(resumeText)
 
-{"overall_score": 75, "summary": "Brief assessment here", "feedback": [{"category": "Formatting & Structure", "items": ["Specific feedback item"], "severity": "medium"}]}
-
-Resume to analyze:
-${resumeText}
-
-Categories to analyze:
-1. Formatting & Structure
-2. Grammar & Spelling  
-3. Content Clarity
-4. ATS Keyword Optimization
-5. Missing Sections
-
-RESPOND ONLY WITH THE JSON OBJECT - NO OTHER TEXT:`,
-    })
-
-    // Parse the AI response with improved error handling
-    let analysisResult
-    try {
-      // Clean the response text more aggressively
-      let cleanedText = text.trim()
-
-      // Remove any text before the first {
-      const jsonStart = cleanedText.indexOf("{")
-      if (jsonStart > 0) {
-        cleanedText = cleanedText.substring(jsonStart)
-      }
-
-      // Remove any text after the last }
-      const jsonEnd = cleanedText.lastIndexOf("}")
-      if (jsonEnd > 0) {
-        cleanedText = cleanedText.substring(0, jsonEnd + 1)
-      }
-
-      // Remove markdown formatting
-      cleanedText = cleanedText.replace(/```json\s*/g, "").replace(/```\s*/g, "")
-
-      analysisResult = JSON.parse(cleanedText)
-
-      // Validate required fields
-      if (!analysisResult.overall_score || !analysisResult.summary || !analysisResult.feedback) {
-        throw new Error("Missing required fields")
-      }
-    } catch (parseError) {
-      console.error("AI Response parsing failed:", parseError)
-      console.log("Raw AI Response:", text.substring(0, 200))
-
-      // Create a structured fallback response based on the AI's text
-      analysisResult = createFallbackAnalysis(text, resumeText)
+    // Add demo content flag if used
+    if (usedDemoContent) {
+      analysisResult.usedDemoContent = true
     }
 
     return NextResponse.json(analysisResult)
